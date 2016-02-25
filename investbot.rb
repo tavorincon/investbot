@@ -46,6 +46,33 @@ def getCurrentPrice(stockname)
   return current_price
 end
 
+def getHistoricalValues(stockname, timeperiod, frequency, type)
+
+  #headers = { "Authorization" => "Basic #{api_key}" }
+
+  response = HTTParty.get("http://dev.markitondemand.com/Api/v2/Quote?symbol=#{stockname}")
+  jsonresponse = response.to_json
+
+  if response.code != 200
+   raise "failed to query"
+  else
+  # util.truncate
+   current_price = JSON.parse(jsonresponse)["StockQuote"]["LastPrice"]
+  end
+
+  return current_price
+end
+
+def buyDecision(stockname, buypricelow, buypricehigh, slope)
+
+  currentprice = getCurrentPrice(stockname)
+  
+  if currentprice > buypricelow
+   if currentprice < buypricehigh
+    
+
+end
+
 # iterate over data and insert records in table
 #records.each do |row|
 # print "."
