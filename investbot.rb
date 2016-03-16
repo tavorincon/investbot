@@ -8,16 +8,16 @@ require 'yaml'
 require 'twilio-ruby'
 
 
-stocks = ["KO","DOW","T","GE","GILD","SYK","JPM","UNH","PG","BA","HD","AAPL"]
+stocks = ["KO","AAPL"]
 
 def getCurrentPrice(stockname)
+  
+  stock_exchange = StockExchange.new
+  stock_results = stock_exchange.quote(stockname)
 
-  #headers = { "Authorization" => "Basic #{api_key}" }
-
-  response = HTTParty.get("http://dev.markitondemand.com/Api/v2/Quote?symbol=#{stockname}")
-  jsonresponse = response.to_json
+  jsonresponse = stock_results.to_json
   # puts jsonresponse
-  if response.code != 200
+  if stock_results.code != 200
    raise "failed to query"
   else
   # util.truncate
@@ -27,8 +27,15 @@ def getCurrentPrice(stockname)
 end
 
 def sendNotification(phone_number)
-  account_sid = 'ACeba3bb02a35fac346470d0bf1cbfd794' 
-  auth_token = '4676d42f22f0ab3f04664ecb86a3de1f' 
+
+  # read through config file to grab DB and API info
+  config = YAML.load_file("config.yml")
+
+  account_sid = config['account_sid']
+  auth_token = config['auth_token']
+
+  #account_sid = 'ACeba3bb02a35fac346470d0bf1cbfd794' 
+  #auth_token = '4676d42f22f0ab3f04664ecb86a3de1f' 
  
   # set up a client to talk to the Twilio REST API 
   @client = Twilio::REST::Client.new account_sid, auth_token 
@@ -40,25 +47,35 @@ def sendNotification(phone_number)
   })
 end
 
+class StockExchange
+  include HTTParty
+  base_uri 'dev.markitondemand.com'
+
+  def initialize
+    @options = {}
+  end
+  
+  def quote(stockname)
+    self.class.get("/Api/v2/Quote?symbol=#{stockname}")
+  end
+
+end
+
 def startProgram(stocks)
 
-  #read through config file to grab DB and API info
-  #config = YAML.load_file("config.yml")
+  # read through config file to grab DB and API info
+  config = YAML.load_file("config.yml")
 
-  #db_user = config['db_user']
-  db_user = 'investbot'
-  #db_pass = config['db_pass']
-  db_pass = 'investbot123'
-  #db_host = config['db_host']
-  db_host = 'investbotdb.c1p7w3xyq4hx.us-east-1.rds.amazonaws.com'
-  #db_name = config['db_name']
-  db_name = 'investbotdb'
-  #api_key = config['api_key']
+  db_user = config['db_user']
+  db_pass = config['db_pass']
+  db_host = config['db_host']
+  db_name = config['db_name']
+  
   # get connection to db - replace with connection to RDS
   db = Sequel.connect(:adapter => 'mysql2', :user => db_user, :host => db_host, :database => db_name, :password => db_pass)
 
   # get a handle to table
-  util = db[:stock_price]
+  util = db[:stock_price_dev]
   
   # iterate over data and insert records in table
   stocks.each do |stock_name|
@@ -105,3 +122,4 @@ end
 # Program Execution
 
 startProgram(stocks)
+sendNotification("+17542452512")
