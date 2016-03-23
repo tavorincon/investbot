@@ -8,7 +8,7 @@ require 'yaml'
 require 'twilio-ruby'
 
 
-stocks = ["KO","AAPL"]
+stocks = ["KO","DOW","T","GE","GILD","SYK","JPM","UNH","PG","BA","HD","AAPL"]
 
 def getCurrentPrice(stockname)
   
@@ -29,14 +29,11 @@ end
 def sendNotification(phone_number)
 
   # read through config file to grab DB and API info
-  config = YAML.load_file("config.yml")
+  config = YAML.load_file("/opt/investbot/config.yml")
 
   account_sid = config['account_sid']
   auth_token = config['auth_token']
 
-  #account_sid = 'ACeba3bb02a35fac346470d0bf1cbfd794' 
-  #auth_token = '4676d42f22f0ab3f04664ecb86a3de1f' 
- 
   # set up a client to talk to the Twilio REST API 
   @client = Twilio::REST::Client.new account_sid, auth_token 
  
@@ -56,7 +53,11 @@ class StockExchange
   end
   
   def quote(stockname)
-    self.class.get("/Api/v2/Quote?symbol=#{stockname}")
+    self.class.get("/MODApis/Api/v2/Quote?symbol=#{stockname}")
+  end
+
+  def interactiveChart(parameters)
+    self.class.get("/MODApis/Api/v2/InteractiveChart/json?parameters=#{parameters}")
   end
 
 end
@@ -64,7 +65,7 @@ end
 def startProgram(stocks)
 
   # read through config file to grab DB and API info
-  config = YAML.load_file("config.yml")
+  config = YAML.load_file("/opt/investbot/config.yml")
 
   db_user = config['db_user']
   db_pass = config['db_pass']
@@ -75,7 +76,7 @@ def startProgram(stocks)
   db = Sequel.connect(:adapter => 'mysql2', :user => db_user, :host => db_host, :database => db_name, :password => db_pass)
 
   # get a handle to table
-  util = db[:stock_price_dev]
+  util = db[:stock_price]
   
   # iterate over data and insert records in table
   stocks.each do |stock_name|
@@ -122,4 +123,4 @@ end
 # Program Execution
 
 startProgram(stocks)
-sendNotification("+17542452512")
+#sendNotification("+17542452512")
