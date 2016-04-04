@@ -105,6 +105,7 @@ def buyStock(stock_symbol, username, bpl, bph)
     puts "Buy #{stock_symbol} now!"
     user_selections = db[:stock_selections]
     user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => true)
+    user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:buy_price => current_price)
     sendNotification("+17542452512", stock_symbol, buy_high_thres)
   else
     puts "don't buy now"
