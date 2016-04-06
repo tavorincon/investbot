@@ -1,13 +1,13 @@
 # investbot
 
 # TO DO
-- Develop game rules for setting up strategy 
-- Develop ranking system for most effective strategy
-- Use AI to predict most efficient parameters
+- Develop game rules for setting up strategy - Klaus/Molina
+- Develop ranking system for most effective strategy - Klaus/Molina
+- Use AI to predict most efficient parameters  - Urrutia
 
 
 ## Future Features: 
-- Store history of transactions
-- Graphical user interface
-- Simulation
-- Feedback of simulation to real life
+- Store history of transactions - Gus
+- Graphical user interface - Gus/Andres
+- Simulation - Gus/Klaus
+- Feedback of simulation to real life - Gus/Klaus
