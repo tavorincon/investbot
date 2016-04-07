@@ -8,7 +8,7 @@ require 'yaml'
 require 'twilio-ruby'
 
 username = ARGV[0]
-#stock_price_db = "stock_price_dev"
+#stock_price_db = "stock_price"
 #$stock_selections_db = {:db => "stock_selections_dev"}
 
 if ARGV.empty?
@@ -72,7 +72,7 @@ def getSMA(stock_symbol, daily_dps, days_sma)
 
   total_dps = daily_dps * days_sma
   
-  avg = db[:stock_price_dev].limit(total_dps).filter(:stock_symbol => stock_symbol).avg(:stock_price).to_f
+  avg = db[:stock_price].limit(total_dps).filter(:stock_symbol => stock_symbol).avg(:stock_price).to_f
   #puts "This is the result of getSMA() #{avg}"
   db.disconnect
   return avg
@@ -91,7 +91,7 @@ def buyStock(stock_symbol, username, phone_number, bpl, bph, delta_t)
   delta_price_3 = getHistoricalPrice(stock_symbol,(3*delta_t))
   
   if delta_price_1.nil? || delta_price_2.nil? || delta_price_3.nil?
-    puts "don't buy now"
+    #puts "don't buy now"
   else
     slope_1 = (current_price - delta_price_1) / (1*delta_t)
     slope_2 = (current_price - delta_price_2) / (2*delta_t)
@@ -101,13 +101,13 @@ def buyStock(stock_symbol, username, phone_number, bpl, bph, delta_t)
     db = Sequel.connect(:adapter => 'mysql2', :user => $db_user, :host => $db_host, :database => $db_name, :password => $db_pass)
 
     if buy_low_thres < current_price && current_price < buy_high_thres && slope_1 > 0 && slope_2 > 0 && slope_3 > 0
-      puts "Buy #{stock_symbol} now!"
+      #puts "Buy #{stock_symbol} now!"
       user_selections = db[:stock_selections_dev]
       user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => true)
       user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:buy_price => current_price)
       sendNotification(phone_number, "Buy #{stock_symbol} between #{buy_low_thres} and #{buy_high_thres}")
     else
-      puts "don't buy now"
+      #puts "don't buy now"
     end
     db.disconnect
   end
@@ -128,24 +128,24 @@ def sellStock(stock_symbol, username, phone_number, spl, sph, delta_t)
   delta_price_3 = getHistoricalPrice(stock_symbol,3*delta_t)
 
   if delta_price_1.nil? || delta_price_2.nil? || delta_price_3.nil?
-    puts "don't sell now"
+    #puts "don't sell now"
   else
     slope_1 = (current_price - delta_price_1) / (1*delta_t)
     slope_2 = (current_price - delta_price_2) / (2*delta_t)
     slope_3 = (current_price - delta_price_3) / (3*delta_t)
 
     if current_price > sell_high_thres && slope_1 < 0 && slope_2 < 0 && slope_3 < 0
-      puts "Sell stock"
+      #puts "Sell stock"
       user_selections = db[:stock_selections_dev]
       user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => false)
       sendNotification(phone_number, "Sell #{stock_symbol} before price goes below #{sell_low_thres}")
     elsif current_price < sell_low_thres
-      puts "Sell stock"
+      #puts "Sell stock"
       user_selections = db[:stock_selections_dev]
       user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => false)
       sendNotification(phone_number, "Sell #{stock_symbol} before price goes below #{sell_low_thres}")
     else
-      puts "Don't sell"
+      #puts "Don't sell"
     end 
     db.disconnect
   end
@@ -156,7 +156,7 @@ def getHistoricalPrice(stock_symbol,delta_time)
   # get connection to db - replace with connection to RDS
   db = Sequel.connect(:adapter => 'mysql2', :user => $db_user, :host => $db_host, :database => $db_name, :password => $db_pass)
 
-  historical_price = db[:stock_price_dev].select(:stock_price).reverse_order(:entry_time).where(:stock_symbol => stock_symbol)
+  historical_price = db[:stock_price].select(:stock_price).reverse_order(:entry_time).where(:stock_symbol => stock_symbol)
   
   if historical_price.any? 
     delta = historical_price.first(delta_time)
