@@ -7,7 +7,7 @@ require 'json'
 require 'yaml'
 
 # read through config file to grab DB and API info
-config = YAML.load_file("new_config.yml")
+config = YAML.load_file("/opt/investbot/new_config.yml")
 
 $db_user = config['db_user']
 $db_pass = config['db_pass']

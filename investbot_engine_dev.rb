@@ -6,10 +6,13 @@ require 'sequel'
 require 'json'
 require 'yaml'
 require 'twilio-ruby'
+require 'logger'
+
+$LOG = Logger.new('/var/log/investbot_dev.log', 'monthly')
 
 username = ARGV[0]
 #stock_price_db = "stock_price"
-#$stock_selections_db = {:db => "stock_selections_dev"}
+#$stock_selections_db = {:db => "stock_selections"}
 
 if ARGV.empty?
   puts "Usage: #{__FILE__} <username>"
@@ -18,7 +21,7 @@ if ARGV.empty?
 end
 
 # read through config file to grab DB and API info
-config = YAML.load_file("new_config.yml")
+config = YAML.load_file("/opt/investbot/new_config.yml")
 
 $db_user = config['db_user']
 $db_pass = config['db_pass']
@@ -81,73 +84,100 @@ end
 
 def buyStock(stock_symbol, username, phone_number, bpl, bph, delta_t)
 
-  current_price = getCurrentPrice(stock_symbol)
-  sma = getSMA(stock_symbol, 390, 5)
+  $LOG.info("Buying Stock: #{stock_symbol}, Username: #{username}")
 
-  buy_high_thres = sma * bph
-  buy_low_thres = sma * bpl
-  delta_price_1 = getHistoricalPrice(stock_symbol,(1*delta_t))
-  delta_price_2 = getHistoricalPrice(stock_symbol,(2*delta_t))
-  delta_price_3 = getHistoricalPrice(stock_symbol,(3*delta_t))
-  
-  if delta_price_1.nil? || delta_price_2.nil? || delta_price_3.nil?
-    #puts "don't buy now"
-  else
-    slope_1 = (current_price - delta_price_1) / (1*delta_t)
-    slope_2 = (current_price - delta_price_2) / (2*delta_t)
-    slope_3 = (current_price - delta_price_3) / (3*delta_t)
+  begin
+    current_price = getCurrentPrice(stock_symbol)
+    sma = getSMA(stock_symbol, 390, 5)
 
-    # get connection to db - replace with connection to RDS
-    db = Sequel.connect(:adapter => 'mysql2', :user => $db_user, :host => $db_host, :database => $db_name, :password => $db_pass)
+    buy_high_thres = (sma * bph).round(2)
+    buy_low_thres = (sma * bpl).round(2)
+    delta_price_1 = getHistoricalPrice(stock_symbol,(1*delta_t))
+    delta_price_2 = getHistoricalPrice(stock_symbol,(2*delta_t))
+    delta_price_3 = getHistoricalPrice(stock_symbol,(3*delta_t))
 
-    if buy_low_thres < current_price && current_price < buy_high_thres && slope_1 > 0 && slope_2 > 0 && slope_3 > 0
-      #puts "Buy #{stock_symbol} now!"
-      user_selections = db[:stock_selections_dev]
-      user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => true)
-      user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:buy_price => current_price)
-      sendNotification(phone_number, "Buy #{stock_symbol} between #{buy_low_thres} and #{buy_high_thres}")
-    else
+    if delta_price_1.nil? || delta_price_2.nil? || delta_price_3.nil?
       #puts "don't buy now"
+    else
+      slope_1 = (current_price - delta_price_1) / (1*delta_t)
+      slope_2 = (current_price - delta_price_2) / (2*delta_t)
+      slope_3 = (current_price - delta_price_3) / (3*delta_t)
+      
+      $LOG.debug("Stock buy condition parameters are SMA: #{sma.round(2)}, Current Price: #{current_price}, Low Thres: #{buy_low_thres}, Buy High Thres: #{buy_high_thres}, Slope 1: #{slope_1}, Slope 2: #{slope_2}, Slope 3: #{slope_3}")
+
+      db = Sequel.connect(:adapter => 'mysql2', :user => $db_user, :host => $db_host, :database => $db_name, :password => $db_pass)
+
+      if buy_low_thres < current_price && current_price < buy_high_thres && slope_1 > 0 && slope_2 > 0 && slope_3 > 0
+        #puts "Buy #{stock_symbol} now!"
+        user_selections = db[:stock_selections_dev]
+        stock_orders = db[:stock_orders_dev]
+        user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => true)
+        user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:buy_price => current_price)
+        entry_time = Time.now
+        stock_orders.insert(:stock_symbol => stock_symbol, :stock_owner => username, :order_type => "buy", :stock_price => current_price, :timestamp => entry_time, :bpl => bpl, :bph => bph, :delta_time => delta_t)
+        sendNotification(phone_number, "Buy #{stock_symbol} between $#{buy_low_thres} and $#{buy_high_thres}")
+        $LOG.info("Stock buy order successful: #{stock_symbol}, Username: #{username}, Price: #{current_price}")
+      else
+        #puts "don't buy now"
+        $LOG.info("Stock buy order did not meet conditions for #{stock_symbol}, Username: #{username}")
+      end
+      db.disconnect
     end
-    db.disconnect
+  rescue Exception => e
+    $LOG.error "Error in buyStock execution!: #{e}"
   end
 end
 
 def sellStock(stock_symbol, username, phone_number, spl, sph, delta_t)
 
-  # get connection to db - replace with connection to RDS
-  db = Sequel.connect(:adapter => 'mysql2', :user => $db_user, :host => $db_host, :database => $db_name, :password => $db_pass)
+  $LOG.info("Selling Stock: #{stock_symbol}, Username: #{username}")
 
-  current_price = getCurrentPrice(stock_symbol)
-  buy_price = db[:stock_selections_dev].select(:buy_price).where(:stock_owner => username, :stock_symbol => stock_symbol).first[:buy_price].to_f
+  begin
+    # get connection to db - replace with connection to RDS
+    db = Sequel.connect(:adapter => 'mysql2', :user => $db_user, :host => $db_host, :database => $db_name, :password => $db_pass)
 
-  sell_high_thres = buy_price * sph
-  sell_low_thres = buy_price * spl
-  delta_price_1 = getHistoricalPrice(stock_symbol,1*delta_t)
-  delta_price_2 = getHistoricalPrice(stock_symbol,2*delta_t)
-  delta_price_3 = getHistoricalPrice(stock_symbol,3*delta_t)
+    current_price = getCurrentPrice(stock_symbol)
+    buy_price = db[:stock_selections_dev].select(:buy_price).where(:stock_owner => username, :stock_symbol => stock_symbol).first[:buy_price].to_f
 
-  if delta_price_1.nil? || delta_price_2.nil? || delta_price_3.nil?
-    #puts "don't sell now"
-  else
-    slope_1 = (current_price - delta_price_1) / (1*delta_t)
-    slope_2 = (current_price - delta_price_2) / (2*delta_t)
-    slope_3 = (current_price - delta_price_3) / (3*delta_t)
+    sell_high_thres = (buy_price * sph).round(2)
+    sell_low_thres = (buy_price * spl).round(2)
+    delta_price_1 = getHistoricalPrice(stock_symbol,1*delta_t)
+    delta_price_2 = getHistoricalPrice(stock_symbol,2*delta_t)
+    delta_price_3 = getHistoricalPrice(stock_symbol,3*delta_t)
 
-    if current_price > sell_high_thres && slope_1 < 0 && slope_2 < 0 && slope_3 < 0
-      #puts "Sell stock"
-      user_selections = db[:stock_selections_dev]
-      user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => false)
-      sendNotification(phone_number, "Sell #{stock_symbol} before price goes below #{sell_low_thres}")
-    elsif current_price < sell_low_thres
-      #puts "Sell stock"
-      user_selections = db[:stock_selections_dev]
-      user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => false)
-      sendNotification(phone_number, "Sell #{stock_symbol} before price goes below #{sell_low_thres}")
+    if delta_price_1.nil? || delta_price_2.nil? || delta_price_3.nil?
+      #puts "don't sell now"
     else
-      #puts "Don't sell"
-    end 
-    db.disconnect
+      slope_1 = (current_price - delta_price_1) / (1*delta_t)
+      slope_2 = (current_price - delta_price_2) / (2*delta_t)
+      slope_3 = (current_price - delta_price_3) / (3*delta_t)
+
+      $LOG.debug("Stock sell condition parameters are: Buy Price: #{buy_price}, Current Price: #{current_price}, Low Thres: #{sell_low_thres}, Sell High Thres: #{sell_high_thres}, Slope 1: #{slope_1}, Slope 2: #{slope_2}, Slope 3: #{slope_3}")
+
+      if current_price > sell_high_thres && slope_1 < 0 && slope_2 < 0 && slope_3 < 0
+        user_selections = db[:stock_selections_dev]
+        user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => false)
+        entry_time = Time.now
+        stock_orders = db[:stock_orders_dev]
+        stock_orders.insert(:stock_symbol => stock_symbol, :stock_owner => username, :order_type => "sell", :stock_price => current_price, :timestamp => entry_time, :spl => spl, :sph => sph, :delta_time => delta_t)
+        sendNotification(phone_number, "WIN! Sell #{stock_symbol} before price goes below $#{sell_high_thres}")
+        $LOG.info("Stock sell order successful: #{stock_symbol}, Username: #{username}, Price: #{current_price}")
+      elsif current_price < sell_low_thres
+        user_selections = db[:stock_selections_dev]
+        user_selections.where(:stock_owner => username, :stock_symbol => stock_symbol).update(:own_stock => false)
+        entry_time = Time.now
+        stock_orders = db[:stock_orders_dev]
+        stock_orders.insert(:stock_symbol => stock_symbol, :stock_owner => username, :order_type => "sell", :stock_price => current_price, :timestamp => entry_time, :spl => spl, :sph => sph, :delta_time => delta_t)
+        sendNotification(phone_number, "LOSS! Sell #{stock_symbol} before price goes below $#{sell_low_thres}")
+        $LOG.info("Stock sell order successful: #{stock_symbol}, Username: #{username}, Price: #{current_price}")
+      else
+        #puts "Don't sell"
+        $LOG.info("Stock sell order did not meet conditions for #{stock_symbol}, Username: #{username}")
+      end 
+      db.disconnect
+    end
+  rescue Exception => e
+    $LOG.error "Error in sellStock execution!: #{e}"
   end
 end
 
