@@ -98,6 +98,7 @@ def buyStock(stock_symbol, username, phone_number, bpl, bph, delta_t)
 
     if delta_price_1.nil? || delta_price_2.nil? || delta_price_3.nil?
       #puts "don't buy now"
+      $LOG.info("Stock buy order did not have enough delta data points for #{stock_symbol}, Username: #{username}")
     else
       slope_1 = (current_price - delta_price_1) / (1*delta_t)
       slope_2 = (current_price - delta_price_2) / (2*delta_t)
@@ -147,6 +148,7 @@ def sellStock(stock_symbol, username, phone_number, spl, sph, delta_t)
 
     if delta_price_1.nil? || delta_price_2.nil? || delta_price_3.nil?
       #puts "don't sell now"
+      $LOG.info("Stock sell order did not have enough delta data points for #{stock_symbol}, Username: #{username}")
     else
       slope_1 = (current_price - delta_price_1) / (1*delta_t)
       slope_2 = (current_price - delta_price_2) / (2*delta_t)
@@ -212,6 +214,8 @@ end
 
 def startProgram(username,phone_number,bpl,bph,spl,sph,delta_t)
 
+  $LOG.info("Starting Investbot Engine execution for: #{username}")
+
   # get connection to db - replace with connection to RDS
   db = Sequel.connect(:adapter => 'mysql2', :user => $db_user, :host => $db_host, :database => $db_name, :password => $db_pass)
 
@@ -227,6 +231,7 @@ def startProgram(username,phone_number,bpl,bph,spl,sph,delta_t)
     db.disconnect
     #sleep(3)
   }
+  $LOG.info("Ending Investbot Engine execution for: #{username}")
 end
 
 # Program Execution
